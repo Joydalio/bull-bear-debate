@@ -77,6 +77,20 @@ def test_judge_backtick_removal_and_retry(monkeypatch):
     assert out["verdict"]["verdict"] == "관망"
 
 
+def test_custom_timeouts_passed(monkeypatch):
+    seen = []
+
+    def fake_ask(system, user, timeout=90):
+        seen.append(timeout)
+        if system == prompts.JUDGE_SYSTEM:
+            return {"result": GOOD_JUDGE, "total_cost_usd": 0.0, "is_error": False, "model": "m"}
+        return {"result": "발언", "total_cost_usd": 0.0, "is_error": False, "model": "m"}
+
+    monkeypatch.setattr(claude_cli, "ask", fake_ask)
+    debate_engine.debate("T", "ctx", rounds=2, r1_timeout=300, rebuttal_timeout=45)
+    assert seen == [300, 300, 45, 45, 45]  # R1 bear/bull, R2 bear/bull, judge
+
+
 def test_judge_double_failure_returns_raw(monkeypatch):
     fake_ask, _ = make_fake_ask(["깨진 응답1", "깨진 응답2"])
     monkeypatch.setattr(claude_cli, "ask", fake_ask)

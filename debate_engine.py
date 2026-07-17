@@ -14,7 +14,8 @@ R1_TIMEOUT = 180  # R1은 장문 생성
 REBUTTAL_TIMEOUT = 90
 
 
-def debate(ticker, context, rounds=2, on_message=None, ask_fn=None):
+def debate(ticker, context, rounds=2, on_message=None, ask_fn=None,
+           r1_timeout=R1_TIMEOUT, rebuttal_timeout=REBUTTAL_TIMEOUT):
     ask_fn = ask_fn or claude_cli.ask  # 기본은 로컬 Claude CLI, Gemini 등 다른 백엔드 주입 가능
     transcript = []
     cost = 0.0
@@ -24,7 +25,7 @@ def debate(ticker, context, rounds=2, on_message=None, ask_fn=None):
         for role in ("bear", "bull"):
             if r == 1:
                 system = BEAR_SYSTEM_R1 if role == "bear" else BULL_SYSTEM_R1
-                timeout = R1_TIMEOUT
+                timeout = r1_timeout
                 if role == "bear":
                     user = f"[대상 기업: {ticker}]\n컨텍스트:\n{context}"
                 else:
@@ -32,7 +33,7 @@ def debate(ticker, context, rounds=2, on_message=None, ask_fn=None):
                             f"\n\n=== Bear Case 전문 ===\n{bear_r1}")
             else:
                 system = BEAR_SYSTEM_REBUTTAL if role == "bear" else BULL_SYSTEM_REBUTTAL
-                timeout = REBUTTAL_TIMEOUT
+                timeout = rebuttal_timeout
                 if role == "bear":
                     user = (f"[{ticker}] 직전 상대(Bull) 주장:\n{last_bull}"
                             f"\n\n본인의 R1 논지 요약:\n{bear_r1[:500]}")
@@ -57,7 +58,7 @@ def debate(ticker, context, rounds=2, on_message=None, ask_fn=None):
             if on_message:
                 on_message(role, r, text)
 
-    verdict, judge_cost = _judge(ticker, transcript, ask_fn)
+    verdict, judge_cost = _judge(ticker, transcript, ask_fn, rebuttal_timeout)
     return {
         "transcript": transcript,
         "verdict": verdict,
@@ -65,7 +66,7 @@ def debate(ticker, context, rounds=2, on_message=None, ask_fn=None):
     }
 
 
-def _judge(ticker, transcript, ask_fn):
+def _judge(ticker, transcript, ask_fn, timeout=REBUTTAL_TIMEOUT):
     full = "\n\n".join(
         f"[라운드 {m['round']} — {m['role'].upper()}]\n{m['text']}" for m in transcript
     )
@@ -73,7 +74,7 @@ def _judge(ticker, transcript, ask_fn):
     cost = 0.0
     raw = ""
     for _ in range(2):  # 파싱 실패 시 1회 재시도
-        resp = ask_fn(JUDGE_SYSTEM, user, timeout=REBUTTAL_TIMEOUT)
+        resp = ask_fn(JUDGE_SYSTEM, user, timeout=timeout)
         cost += resp.get("total_cost_usd") or 0.0
         raw = resp["result"].strip()
         cleaned = raw.replace("```json", "").replace("```", "").strip()
