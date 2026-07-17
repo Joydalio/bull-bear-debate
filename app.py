@@ -10,8 +10,12 @@ import claude_cli
 import debate_engine
 import gemini_client
 import pdf_export
+from prompts import SUMMARY_SYSTEM_TEMPLATE
 
 REPORTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
+
+CLAUDE_MODELS = ["claude-fable-5", "claude-opus-4-8", "claude-sonnet-5"]
+GEMINI_MODELS = ["gemini-3-pro-preview", "gemini-2.5-pro", "gemini-2.5-flash"]
 
 st.set_page_config(page_title="Bull vs Bear Debate", page_icon="⚖️", layout="wide")
 
@@ -33,6 +37,7 @@ h1 { font-size: 1.6rem !important; letter-spacing: -0.02em; }
 .bbd-stat { background: #21222D; border-radius: 12px; padding: 16px 20px; min-width: 130px; flex: 1; }
 .bbd-stat .v { font-size: 1.7rem; font-weight: 800; }
 .bbd-stat .l { color: #87888C; font-size: 0.78rem; margin-top: 2px; }
+.bbd-rank .v { font-size: 1.2rem; }
 .bbd-bar-row { display: flex; align-items: center; gap: 10px; margin: 7px 0; }
 .bbd-bar-row .axis { width: 20px; font-weight: 700; color: #87888C; }
 .bbd-bar-bg { flex: 1; height: 8px; background: #2b2c38; border-radius: 4px; }
@@ -45,6 +50,7 @@ st.title("⚖️ Bull vs Bear Debate")
 with st.sidebar:
     backend = st.radio("LLM 백엔드", ["Claude (로컬 CLI)", "Gemini (API 키)"])
     use_gemini = backend.startswith("Gemini")
+    model_choice = st.selectbox("모델", GEMINI_MODELS if use_gemini else CLAUDE_MODELS)
 
     backend_error = None
     gemini_key = ""
@@ -63,8 +69,25 @@ with st.sidebar:
     if backend_error:
         st.warning(backend_error)
 
-    ticker = st.text_input("종목명 또는 종목코드", placeholder="삼성전자 또는 005930")
+    tickers_raw = st.text_area(
+        "종목명 또는 종목코드 (최대 5개, 줄바꿈/쉼표 구분)",
+        height=100,
+        placeholder="삼성전자\nSK하이닉스 또는 005930, 000660",
+    )
+    tickers = [t.strip() for chunk in tickers_raw.splitlines() for t in chunk.split(",") if t.strip()]
+    if len(tickers) > 5:
+        st.warning("최대 5개까지만 사용합니다 — 앞의 5개만 진행")
+        tickers = tickers[:5]
+
     rounds = st.slider("라운드 수", 1, 4, 2)
+    with st.expander("⚙️ 고급 설정"):
+        r1_timeout = st.slider("R1(장문) 타임아웃(초)", 60, 600, 180)
+        rebuttal_timeout = st.slider("반박·심판 타임아웃(초)", 30, 300, 90)
+
+    if len(tickers) >= 2:
+        est = len(tickers) * (rounds * 2 + 2) + len(tickers) + 1
+        st.caption(f"⏱️ 토너먼트 모드: LLM 호출 약 {est}회, 예상 {est}~{est * 2}분")
+
     run = st.button(
         "토론 시작",
         type="primary",
@@ -88,34 +111,41 @@ with st.sidebar:
 
 if use_gemini:
     def ask_fn(system, user, timeout=90):
-        return gemini_client.ask(system, user, gemini_key, timeout=timeout)
+        return gemini_client.ask(system, user, gemini_key, timeout=timeout, model=model_choice)
 
     def research_fn(t):
-        return gemini_client.research(t, gemini_key)
+        return gemini_client.research(t, gemini_key, model=model_choice)
 else:
-    ask_fn = claude_cli.ask
-    research_fn = claude_cli.research
+    def ask_fn(system, user, timeout=90):
+        return claude_cli.ask(system, user, timeout=timeout, model=model_choice)
 
-auto_ctx = st.button(
-    "🔍 AI로 컨텍스트 자동 생성 (웹검색, 1~3분)",
-    disabled=bool(backend_error),
-)
-if auto_ctx:
-    if not ticker.strip():
-        st.warning("먼저 사이드바에 종목명(또는 종목코드)을 입력하세요.")
-    else:
-        try:
-            with st.spinner("웹에서 최신 정량 데이터를 조사하는 중…"):
-                st.session_state["context_text"] = research_fn(ticker.strip())
-        except Exception as e:
-            st.error(f"컨텍스트 자동 생성 실패: {e}")
+    def research_fn(t):
+        return claude_cli.research(t, model=model_choice)
 
-context = st.text_area(
-    "컨텍스트",
-    height=220,
-    key="context_text",
-    placeholder="정량 스크리닝 요약 붙여넣기 — 주가/PER/PSR/수급/오버행 등 (또는 위 버튼으로 자동 생성)",
-)
+context = ""
+if len(tickers) <= 1:
+    auto_ctx = st.button(
+        "🔍 AI로 컨텍스트 자동 생성 (웹검색, 1~3분)",
+        disabled=bool(backend_error),
+    )
+    if auto_ctx:
+        if not tickers:
+            st.warning("먼저 사이드바에 종목명(또는 종목코드)을 입력하세요.")
+        else:
+            try:
+                with st.spinner("웹에서 최신 정량 데이터를 조사하는 중…"):
+                    st.session_state["context_text"] = research_fn(tickers[0])
+            except Exception as e:
+                st.error(f"컨텍스트 자동 생성 실패: {e}")
+
+    context = st.text_area(
+        "컨텍스트",
+        height=220,
+        key="context_text",
+        placeholder="정량 스크리닝 요약 붙여넣기 — 주가/PER/PSR/수급/오버행 등 (또는 위 버튼으로 자동 생성)",
+    )
+else:
+    st.info(f"토너먼트 모드: {len(tickers)}개 종목의 컨텍스트는 종목별로 자동 리서치됩니다.")
 
 
 def render_message(role, rnd, text):
@@ -134,11 +164,23 @@ def render_message(role, rnd, text):
         st.write(text)
 
 
+def save_report(result, prefix):
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+    safe = re.sub(r'[\\/:*?"<>|]', "_", prefix)
+    fname = os.path.join(REPORTS_DIR, f"{safe}_{datetime.datetime.now():%Y%m%d_%H%M%S}.json")
+    with open(fname, "w", encoding="utf-8") as f:
+        json.dump(result, f, ensure_ascii=False, indent=2)
+    st.toast(f"💾 보고서 자동 저장됨: reports/{os.path.basename(fname)}")
+
+
 just_ran = False
 if run:
-    if not ticker.strip() or not context.strip():
-        st.warning("종목명(또는 종목코드)과 컨텍스트를 모두 입력하세요.")
-    else:
+    if not tickers:
+        st.warning("종목을 1개 이상 입력하세요.")
+    elif len(tickers) == 1 and not context.strip():
+        st.warning("컨텍스트를 입력하거나 자동 생성 버튼을 사용하세요.")
+    elif len(tickers) == 1:
+        ticker = tickers[0]
         chat_area = st.container()
         progress_ph = st.empty()
         progress_ph.markdown("⏳ **라운드 1 · 🐻 Bear 발언 생성 중…**")
@@ -155,70 +197,143 @@ if run:
             progress_ph.markdown(f"⏳ **{nxt}**")
 
         try:
-            with st.spinner("토론 진행 중… (라운드당 1~3분 소요)"):
-                result = debate_engine.debate(
-                    ticker.strip(), context.strip(), rounds=rounds,
-                    on_message=on_message, ask_fn=ask_fn,
-                )
+            result = debate_engine.debate(
+                ticker, context.strip(), rounds=rounds,
+                on_message=on_message, ask_fn=ask_fn,
+                r1_timeout=r1_timeout, rebuttal_timeout=rebuttal_timeout,
+            )
         except Exception as e:
             progress_ph.empty()
             st.error(f"토론 중단: {e}")
             st.stop()
         progress_ph.empty()
+        result["type"] = "single"
+        result["ticker"] = ticker
         st.session_state["result"] = result
-        st.session_state["ticker"] = ticker.strip()
+        st.session_state["ticker"] = ticker
         just_ran = True
-        # 보고서 자동 저장
-        os.makedirs(REPORTS_DIR, exist_ok=True)
-        safe = re.sub(r'[\\/:*?"<>|]', "_", ticker.strip())
-        fname = os.path.join(REPORTS_DIR, f"{safe}_{datetime.datetime.now():%Y%m%d_%H%M%S}.json")
-        with open(fname, "w", encoding="utf-8") as f:
-            json.dump({"ticker": ticker.strip(), **result}, f, ensure_ascii=False, indent=2)
-        st.toast(f"💾 보고서 자동 저장됨: reports/{os.path.basename(fname)}")
+        save_report(result, ticker)
+    else:
+        chat_area = st.container()
+        progress_ph = st.empty()
+
+        def on_event(stage, t, detail=None):
+            idx = tickers.index(t) + 1 if t in tickers else 0
+            if stage == "research":
+                progress_ph.markdown(f"⏳ **[{idx}/{len(tickers)}] {t} · 웹 리서치 중…**")
+            elif stage == "debate" and detail:
+                role, rnd, text = detail
+                with chat_area:
+                    st.markdown(f"##### {t}")
+                    render_message(role, rnd, text)
+            elif stage == "debate":
+                progress_ph.markdown(f"⏳ **[{idx}/{len(tickers)}] {t} · 토론 중…**")
+            elif stage == "advocate":
+                progress_ph.markdown(f"⏳ **{t} · 비교 변론 생성 중…**")
+            else:
+                progress_ph.markdown("⏳ **🏆 최종 랭킹 판정 중…**")
+
+        try:
+            result = debate_engine.tournament(
+                tickers, rounds=rounds, ask_fn=ask_fn, research_fn=research_fn,
+                on_event=on_event, r1_timeout=r1_timeout, rebuttal_timeout=rebuttal_timeout,
+            )
+        except Exception as e:
+            progress_ph.empty()
+            st.error(f"토너먼트 중단: {e}")
+            st.stop()
+        progress_ph.empty()
+        st.session_state["result"] = result
+        st.session_state["ticker"] = "TOP" + str(len(result["results"]))
+        just_ran = True
+        save_report(result, "TOP5")
+
+
+def render_single_verdict(verdict):
+    if verdict.get("parse_error"):
+        st.error("심판 응답 JSON 파싱 실패 — 원문:")
+        st.code(verdict.get("raw", ""))
+        return
+    v = verdict.get("verdict", "?")
+    v_color = VERDICT_COLORS.get(v, "#87888C")
+    winner = verdict.get("winner", "?")
+    w_icon = {"bear": "🐻", "bull": "🐮"}.get(winner, "🤝")
+    bars = "".join(
+        f'<div class="bbd-bar-row"><span class="axis">{axis}</span>'
+        f'<div class="bbd-bar-bg"><div class="bbd-bar-fill" style="width:{min(float(verdict.get(axis, 0)) / 2.5 * 100, 100):.0f}%;'
+        f'background:{AXIS_COLORS[axis]}"></div></div>'
+        f'<span class="score">{verdict.get(axis, "?")} / 2.5</span></div>'
+        for axis in ["O", "R", "C", "A"]
+    )
+    st.markdown(
+        f'<div class="bbd-grid">'
+        f'<div class="bbd-stat" style="border:1px solid {v_color}66">'
+        f'<div class="v" style="color:{v_color}">{v}</div><div class="l">Verdict</div></div>'
+        f'<div class="bbd-stat"><div class="v">{w_icon} {winner}</div><div class="l">Winner</div></div>'
+        f'<div class="bbd-stat"><div class="v">{verdict.get("total", "?")}<span style="font-size:0.9rem;color:#87888C"> / 10</span></div>'
+        f'<div class="l">ORCA Total</div></div>'
+        f'<div class="bbd-stat" style="flex:2;min-width:260px">{bars}</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(f"**핵심 근거:** {verdict.get('key_reason', '')}")
+    inv = verdict.get("invalidation") or []
+    if inv:
+        st.markdown("**무효화(반증) 조건:**")
+        for item in inv:
+            st.markdown(f"- {item}")
+
+
+def render_tournament(result):
+    st.divider()
+    st.subheader("🏆 최종 순위")
+    ranking = result.get("ranking") or {}
+    if ranking.get("parse_error"):
+        st.error("랭킹 파싱 실패 — 원문:")
+        st.code(ranking.get("raw", ""))
+    elif ranking:
+        medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
+        cards = ""
+        for i, row in enumerate(ranking.get("ranking", [])):
+            t = row.get("ticker", "?")
+            v = (result["results"].get(t) or {}).get("verdict") or {}
+            cards += (
+                f'<div class="bbd-stat bbd-rank"><div class="v">{medals[i] if i < 5 else ""} {t}</div>'
+                f'<div class="l">ORCA {v.get("total", "?")}/10 · {v.get("verdict", "?")}<br>{row.get("reason", "")}</div></div>'
+            )
+        st.markdown(f'<div class="bbd-grid">{cards}</div>', unsafe_allow_html=True)
+        if ranking.get("portfolio_comment"):
+            st.markdown(f"**포트폴리오 코멘트:** {ranking['portfolio_comment']}")
+    if result.get("failed"):
+        st.warning("실패로 제외된 종목: " + ", ".join(result["failed"]))
+    for t, res in result["results"].items():
+        with st.expander(f"📊 {t} — 개별 토론 및 판정"):
+            for m in res["transcript"]:
+                render_message(m["role"], m["round"], m["text"])
+            v = res.get("verdict") or {}
+            if not v.get("parse_error"):
+                st.markdown(f"**개별 판정:** {v.get('verdict')} · 총점 {v.get('total')}/10 — {v.get('key_reason', '')}")
+    if result.get("advocacy"):
+        with st.expander("🎤 비교 변론 전문"):
+            for t, speech in result["advocacy"].items():
+                st.markdown(f"**[{t}]**")
+                st.write(speech)
+
 
 if "result" in st.session_state:
     result = st.session_state["result"]
     saved_ticker = st.session_state["ticker"]
+    is_tournament = result.get("type") == "tournament"
 
-    if not just_ran:  # 다운로드 버튼 클릭 등 rerun 시 기록에서 다시 그림
-        for m in result["transcript"]:
-            render_message(m["role"], m["round"], m["text"])
-
-    st.divider()
-    st.subheader("🧑‍⚖️ 심판 판정")
-    verdict = result["verdict"]
-    if verdict.get("parse_error"):
-        st.error("심판 응답 JSON 파싱 실패 — 원문:")
-        st.code(verdict.get("raw", ""))
+    if is_tournament:
+        render_tournament(result)
     else:
-        v = verdict.get("verdict", "?")
-        v_color = VERDICT_COLORS.get(v, "#87888C")
-        winner = verdict.get("winner", "?")
-        w_icon = {"bear": "🐻", "bull": "🐮"}.get(winner, "🤝")
-        bars = "".join(
-            f'<div class="bbd-bar-row"><span class="axis">{axis}</span>'
-            f'<div class="bbd-bar-bg"><div class="bbd-bar-fill" style="width:{min(float(verdict.get(axis, 0)) / 2.5 * 100, 100):.0f}%;'
-            f'background:{AXIS_COLORS[axis]}"></div></div>'
-            f'<span class="score">{verdict.get(axis, "?")} / 2.5</span></div>'
-            for axis in ["O", "R", "C", "A"]
-        )
-        st.markdown(
-            f'<div class="bbd-grid">'
-            f'<div class="bbd-stat" style="border:1px solid {v_color}66">'
-            f'<div class="v" style="color:{v_color}">{v}</div><div class="l">Verdict</div></div>'
-            f'<div class="bbd-stat"><div class="v">{w_icon} {winner}</div><div class="l">Winner</div></div>'
-            f'<div class="bbd-stat"><div class="v">{verdict.get("total", "?")}<span style="font-size:0.9rem;color:#87888C"> / 10</span></div>'
-            f'<div class="l">ORCA Total</div></div>'
-            f'<div class="bbd-stat" style="flex:2;min-width:260px">{bars}</div>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(f"**핵심 근거:** {verdict.get('key_reason', '')}")
-        inv = verdict.get("invalidation") or []
-        if inv:
-            st.markdown("**무효화(반증) 조건:**")
-            for item in inv:
-                st.markdown(f"- {item}")
+        if not just_ran:  # 다운로드 버튼 클릭 등 rerun 시 기록에서 다시 그림
+            for m in result["transcript"]:
+                render_message(m["role"], m["round"], m["text"])
+        st.divider()
+        st.subheader("🧑‍⚖️ 심판 판정")
+        render_single_verdict(result["verdict"])
 
     date_str = datetime.date.today().strftime("%Y%m%d")
     dl_json, dl_pdf = st.columns(2)
@@ -230,11 +345,14 @@ if "result" in st.session_state:
         use_container_width=True,
     )
     try:
-        pdf_bytes = pdf_export.build_pdf(
-            saved_ticker, result["transcript"], verdict, result["notional_cost_usd"]
-        )
+        if is_tournament:
+            pdf_bytes = pdf_export.build_tournament_pdf(result)
+        else:
+            pdf_bytes = pdf_export.build_pdf(
+                saved_ticker, result["transcript"], result["verdict"], result["notional_cost_usd"]
+            )
         dl_pdf.download_button(
-            "📑 PDF 다운로드",
+            "📑 PDF 다운로드 (전체)",
             data=pdf_bytes,
             file_name=f"{saved_ticker}_{date_str}.pdf",
             mime="application/pdf",
@@ -242,6 +360,28 @@ if "result" in st.session_state:
         )
     except RuntimeError as e:
         dl_pdf.error(str(e))
+
+    pdf_len = st.selectbox("PDF 분량", ["전체(원문)"] + [f"요약 약 {n}장" for n in range(1, 11)])
+    if pdf_len != "전체(원문)":
+        n_pages = int(pdf_len.replace("요약 약 ", "").replace("장", ""))
+        if st.button("📝 요약 PDF 생성", disabled=bool(backend_error)):
+            full_text = json.dumps(result, ensure_ascii=False)
+            system = SUMMARY_SYSTEM_TEMPLATE.format(chars=n_pages * 1800, pages=n_pages)
+            try:
+                with st.spinner("요약 생성 중…"):
+                    resp = ask_fn(system, f"다음 보고서를 재작성:\n{full_text}", timeout=r1_timeout)
+                st.session_state["summary_pdf"] = pdf_export.build_text_pdf(
+                    f"{saved_ticker} 요약 보고서 (약 {n_pages}장)", resp["result"]
+                )
+            except Exception as e:
+                st.error(f"요약 생성 실패: {e}")
+        if st.session_state.get("summary_pdf"):
+            st.download_button(
+                "📑 요약 PDF 다운로드",
+                data=st.session_state["summary_pdf"],
+                file_name=f"{saved_ticker}_{date_str}_summary.pdf",
+                mime="application/pdf",
+            )
 
     st.caption(
         f"명목 비용: ${result['notional_cost_usd']:.4f} — 구독 기반이므로 실제 청구 없음"
