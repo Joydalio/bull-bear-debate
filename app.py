@@ -9,6 +9,33 @@ import gemini_client
 import pdf_export
 
 st.set_page_config(page_title="Bull vs Bear Debate", page_icon="⚖️", layout="wide")
+
+# Figma(Nickelfox Sales Dashboard) 팔레트: bg #171821 / card #21222D / mint #A9DFD8
+BEAR_COLOR = "#FCB859"  # amber
+BULL_COLOR = "#A9DFD8"  # mint
+AXIS_COLORS = {"O": "#FCB859", "R": "#A0C5E8", "C": "#A9DFD8", "A": "#F2C8ED"}
+VERDICT_COLORS = {"매수": "#A9DFD8", "관망": "#87888C", "매도": "#F97B7B"}
+
+st.markdown("""<style>
+h1 { font-size: 1.6rem !important; letter-spacing: -0.02em; }
+[data-testid="stSidebar"] { background: #101118; border-right: 1px solid #2b2c38; }
+.stButton > button, .stDownloadButton > button { border-radius: 10px; border: 1px solid #2b2c38; }
+[data-testid="stExpander"] { background: #21222D; border-radius: 10px; border: 1px solid #2b2c38; }
+.stTextArea textarea, .stTextInput input { background: #21222D !important; border-radius: 10px; }
+.bbd-role { display: inline-block; padding: 4px 12px; border-radius: 8px; font-size: 0.8rem;
+            font-weight: 700; background: #21222D; margin: 14px 0 4px 0; }
+.bbd-msg { border-left: 3px solid #2b2c38; padding-left: 14px; margin-left: 4px; }
+.bbd-grid { display: flex; gap: 12px; flex-wrap: wrap; margin: 8px 0 16px 0; }
+.bbd-stat { background: #21222D; border-radius: 12px; padding: 16px 20px; min-width: 130px; flex: 1; }
+.bbd-stat .v { font-size: 1.7rem; font-weight: 800; }
+.bbd-stat .l { color: #87888C; font-size: 0.78rem; margin-top: 2px; }
+.bbd-bar-row { display: flex; align-items: center; gap: 10px; margin: 7px 0; }
+.bbd-bar-row .axis { width: 20px; font-weight: 700; color: #87888C; }
+.bbd-bar-bg { flex: 1; height: 8px; background: #2b2c38; border-radius: 4px; }
+.bbd-bar-fill { height: 8px; border-radius: 4px; }
+.bbd-bar-row .score { width: 70px; text-align: right; font-size: 0.85rem; color: #87888C; }
+</style>""", unsafe_allow_html=True)
+
 st.title("⚖️ Bull vs Bear Debate")
 
 with st.sidebar:
@@ -74,14 +101,19 @@ context = st.text_area(
 
 
 def render_message(role, rnd, text):
-    with st.chat_message(role, avatar="🐻" if role == "bear" else "🐮"):
-        st.caption(f"라운드 {rnd} · {'Bear (공매도)' if role == 'bear' else 'Bull (매수)'}")
-        if rnd == 1 and len(text) > 300:
-            st.write(text[:300] + "…")
-            with st.expander("전문 보기"):
-                st.write(text)
-        else:
+    color = BEAR_COLOR if role == "bear" else BULL_COLOR
+    icon, label = ("🐻", "Bear (공매도)") if role == "bear" else ("🐮", "Bull (매수)")
+    st.markdown(
+        f'<span class="bbd-role" style="color:{color}; border:1px solid {color}55">'
+        f'{icon} 라운드 {rnd} · {label}</span>',
+        unsafe_allow_html=True,
+    )
+    if rnd == 1 and len(text) > 300:
+        st.write(text[:300] + "…")
+        with st.expander("전문 보기"):
             st.write(text)
+    else:
+        st.write(text)
 
 
 just_ran = False
@@ -90,10 +122,19 @@ if run:
         st.warning("종목명(또는 종목코드)과 컨텍스트를 모두 입력하세요.")
     else:
         chat_area = st.container()
+        progress_ph = st.empty()
+        progress_ph.markdown(f"⏳ **라운드 1 · 🐻 Bear 발언 생성 중…**")
 
         def on_message(role, rnd, text):
             with chat_area:
                 render_message(role, rnd, text)
+            if role == "bear":
+                nxt = f"라운드 {rnd} · 🐮 Bull 발언 생성 중…"
+            elif rnd < rounds:
+                nxt = f"라운드 {rnd + 1} · 🐻 Bear 발언 생성 중…"
+            else:
+                nxt = "🧑‍⚖️ 심판 판정 중…"
+            progress_ph.markdown(f"⏳ **{nxt}**")
 
         try:
             with st.spinner("토론 진행 중… (라운드당 1~3분 소요)"):
@@ -102,8 +143,10 @@ if run:
                     on_message=on_message, ask_fn=ask_fn,
                 )
         except Exception as e:
+            progress_ph.empty()
             st.error(f"토론 중단: {e}")
             st.stop()
+        progress_ph.empty()
         st.session_state["result"] = result
         st.session_state["ticker"] = ticker.strip()
         just_ran = True
@@ -123,13 +166,28 @@ if "result" in st.session_state:
         st.error("심판 응답 JSON 파싱 실패 — 원문:")
         st.code(verdict.get("raw", ""))
     else:
-        cols = st.columns(4)
-        for col, axis in zip(cols, ["O", "R", "C", "A"]):
-            col.metric(axis, f"{verdict.get(axis, '?')} / 2.5")
-        v_col, w_col, t_col = st.columns(3)
-        v_col.metric("Verdict", verdict.get("verdict", "?"))
-        w_col.metric("Winner", verdict.get("winner", "?"))
-        t_col.metric("Total", f"{verdict.get('total', '?')} / 10")
+        v = verdict.get("verdict", "?")
+        v_color = VERDICT_COLORS.get(v, "#87888C")
+        winner = verdict.get("winner", "?")
+        w_icon = {"bear": "🐻", "bull": "🐮"}.get(winner, "🤝")
+        bars = "".join(
+            f'<div class="bbd-bar-row"><span class="axis">{axis}</span>'
+            f'<div class="bbd-bar-bg"><div class="bbd-bar-fill" style="width:{min(float(verdict.get(axis, 0)) / 2.5 * 100, 100):.0f}%;'
+            f'background:{AXIS_COLORS[axis]}"></div></div>'
+            f'<span class="score">{verdict.get(axis, "?")} / 2.5</span></div>'
+            for axis in ["O", "R", "C", "A"]
+        )
+        st.markdown(
+            f'<div class="bbd-grid">'
+            f'<div class="bbd-stat" style="border:1px solid {v_color}66">'
+            f'<div class="v" style="color:{v_color}">{v}</div><div class="l">Verdict</div></div>'
+            f'<div class="bbd-stat"><div class="v">{w_icon} {winner}</div><div class="l">Winner</div></div>'
+            f'<div class="bbd-stat"><div class="v">{verdict.get("total", "?")}<span style="font-size:0.9rem;color:#87888C"> / 10</span></div>'
+            f'<div class="l">ORCA Total</div></div>'
+            f'<div class="bbd-stat" style="flex:2;min-width:260px">{bars}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
         st.markdown(f"**핵심 근거:** {verdict.get('key_reason', '')}")
         inv = verdict.get("invalidation") or []
         if inv:
