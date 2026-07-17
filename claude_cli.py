@@ -30,15 +30,9 @@ def _run(cmd, timeout):
     )
 
 
-def _try_model(model, system_prompt, user_prompt, timeout):
-    cmd = [
-        _claude_bin(), "-p", user_prompt,
-        "--system-prompt", system_prompt,
-        "--output-format", "json",
-        "--max-turns", "1",
-        "--model", model,
-    ]
-    proc = _run(cmd, timeout)
+def _exec(model, args, timeout):
+    """claude -p 실행 후 JSON 파싱. 실패 시 stderr 포함 예외."""
+    proc = _run([_claude_bin(), "-p"] + args + ["--output-format", "json", "--model", model], timeout)
     if proc.returncode != 0:
         raise RuntimeError(
             f"claude CLI 실패 (model={model}, code={proc.returncode}): {proc.stderr.strip()}"
@@ -48,58 +42,42 @@ def _try_model(model, system_prompt, user_prompt, timeout):
         raise RuntimeError(
             f"claude 응답 오류 (model={model}): {data.get('result')} {proc.stderr.strip()}"
         )
-    return {
-        "result": data.get("result", ""),
-        "total_cost_usd": data.get("total_cost_usd") or 0.0,
-        "is_error": False,
-        "model": model,
-    }
+    return data
 
 
-def ask(system_prompt, user_prompt, timeout=90):
+def _with_fallback(fn):
     global _active_model
     try:
-        return _try_model(_active_model, system_prompt, user_prompt, timeout)
+        return fn(_active_model)
     except RuntimeError:
         if _active_model != MODEL_PRIMARY:
             raise
-        out = _try_model(MODEL_FALLBACK, system_prompt, user_prompt, timeout)
+        out = fn(MODEL_FALLBACK)
         _active_model = MODEL_FALLBACK  # 성공한 폴백을 캐시해 이후 호출 재시도 방지
         return out
+
+
+def ask(system_prompt, user_prompt, timeout=90):
+    def call(model):
+        data = _exec(model, [user_prompt, "--system-prompt", system_prompt, "--max-turns", "1"], timeout)
+        return {
+            "result": data.get("result", ""),
+            "total_cost_usd": data.get("total_cost_usd") or 0.0,
+            "is_error": False,
+            "model": model,
+        }
+
+    return _with_fallback(call)
 
 
 def research(ticker, timeout=300):
     """웹검색으로 종목 정량 스크리닝 요약을 자동 생성. 반환: 요약 문자열."""
     from prompts import RESEARCH_PROMPT_TEMPLATE
 
-    global _active_model
     prompt = RESEARCH_PROMPT_TEMPLATE.format(ticker=ticker)
-
-    def _run_research(model):
-        cmd = [
-            _claude_bin(), "-p", prompt,
-            "--output-format", "json",
-            "--model", model,
-            "--allowedTools", "WebSearch",
-        ]
-        proc = _run(cmd, timeout)
-        if proc.returncode != 0:
-            raise RuntimeError(
-                f"claude CLI 실패 (model={model}, code={proc.returncode}): {proc.stderr.strip()}"
-            )
-        data = json.loads(proc.stdout)
-        if data.get("is_error"):
-            raise RuntimeError(f"claude 응답 오류 (model={model}): {data.get('result')}")
-        return data.get("result", "")
-
-    try:
-        return _run_research(_active_model)
-    except RuntimeError:
-        if _active_model != MODEL_PRIMARY:
-            raise
-        out = _run_research(MODEL_FALLBACK)
-        _active_model = MODEL_FALLBACK
-        return out
+    return _with_fallback(
+        lambda m: _exec(m, [prompt, "--allowedTools", "WebSearch"], timeout).get("result", "")
+    )
 
 
 def preflight():

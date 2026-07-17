@@ -29,7 +29,6 @@ h1 { font-size: 1.6rem !important; letter-spacing: -0.02em; }
 .stTextArea textarea, .stTextInput input { background: #21222D !important; border-radius: 10px; }
 .bbd-role { display: inline-block; padding: 4px 12px; border-radius: 8px; font-size: 0.8rem;
             font-weight: 700; background: #21222D; margin: 14px 0 4px 0; }
-.bbd-msg { border-left: 3px solid #2b2c38; padding-left: 14px; margin-left: 4px; }
 .bbd-grid { display: flex; gap: 12px; flex-wrap: wrap; margin: 8px 0 16px 0; }
 .bbd-stat { background: #21222D; border-radius: 12px; padding: 16px 20px; min-width: 130px; flex: 1; }
 .bbd-stat .v { font-size: 1.7rem; font-weight: 800; }
@@ -142,7 +141,7 @@ if run:
     else:
         chat_area = st.container()
         progress_ph = st.empty()
-        progress_ph.markdown(f"⏳ **라운드 1 · 🐻 Bear 발언 생성 중…**")
+        progress_ph.markdown("⏳ **라운드 1 · 🐻 Bear 발언 생성 중…**")
 
         def on_message(role, rnd, text):
             with chat_area:
