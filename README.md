@@ -20,24 +20,28 @@
 2. **Claude 백엔드 사용 시**: [Claude Code CLI](https://claude.com/claude-code) 설치 및 로그인, 터미널에서 `claude --version` 동작 확인 (PATH 등록 필요)
 3. **Gemini 백엔드 사용 시**: 별도 설치 불필요 — API 키만 발급받아 앱 화면에 입력
 
-## 설치
+## 설치 및 실행 (원클릭)
+
+[Code → Download ZIP](https://github.com/Joydalio/bull-bear-debate/archive/refs/heads/main.zip)으로 받아 압축을 풀거나 `git clone` 후:
+
+- **Windows**: `run.bat` 더블클릭
+- **macOS/Linux**: 터미널에서 `./run.sh`
+
+가상환경 생성 → 패키지 설치 → 앱 실행 → 브라우저 자동 오픈까지 전부 자동입니다.
+Python 3.9+만 설치되어 있으면 됩니다 (Windows는 [python.org](https://www.python.org/downloads/)에서 설치 시 **"Add Python to PATH" 체크 필수**).
+
+<details>
+<summary>수동 설치를 원하면</summary>
 
 ```bash
 git clone https://github.com/Joydalio/bull-bear-debate.git
 cd bull-bear-debate
 python -m venv .venv
-# macOS/Linux
-source .venv/bin/activate
-# Windows
-# .venv\Scripts\activate
+# macOS/Linux: source .venv/bin/activate | Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-```
-
-## 실행
-
-```bash
 streamlit run app.py
 ```
+</details>
 
 브라우저에서 `http://localhost:8501` 접속 후:
 
