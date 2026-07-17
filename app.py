@@ -1,5 +1,8 @@
 import datetime
+import glob
 import json
+import os
+import re
 
 import streamlit as st
 
@@ -7,6 +10,8 @@ import claude_cli
 import debate_engine
 import gemini_client
 import pdf_export
+
+REPORTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
 
 st.set_page_config(page_title="Bull vs Bear Debate", page_icon="⚖️", layout="wide")
 
@@ -67,6 +72,20 @@ with st.sidebar:
         disabled=bool(backend_error),
         use_container_width=True,
     )
+
+    saved = sorted(glob.glob(os.path.join(REPORTS_DIR, "*.json")), reverse=True)
+    if saved:
+        st.divider()
+        pick = st.selectbox(
+            "📂 지난 보고서",
+            ["— 선택 —"] + [os.path.basename(p)[:-5] for p in saved],
+        )
+        if pick != "— 선택 —" and st.session_state.get("loaded_report") != pick:
+            with open(os.path.join(REPORTS_DIR, pick + ".json"), encoding="utf-8") as f:
+                data = json.load(f)
+            st.session_state["result"] = data
+            st.session_state["ticker"] = data.get("ticker", pick)
+            st.session_state["loaded_report"] = pick
 
 if use_gemini:
     def ask_fn(system, user, timeout=90):
@@ -150,6 +169,13 @@ if run:
         st.session_state["result"] = result
         st.session_state["ticker"] = ticker.strip()
         just_ran = True
+        # 보고서 자동 저장
+        os.makedirs(REPORTS_DIR, exist_ok=True)
+        safe = re.sub(r'[\\/:*?"<>|]', "_", ticker.strip())
+        fname = os.path.join(REPORTS_DIR, f"{safe}_{datetime.datetime.now():%Y%m%d_%H%M%S}.json")
+        with open(fname, "w", encoding="utf-8") as f:
+            json.dump({"ticker": ticker.strip(), **result}, f, ensure_ascii=False, indent=2)
+        st.toast(f"💾 보고서 자동 저장됨: reports/{os.path.basename(fname)}")
 
 if "result" in st.session_state:
     result = st.session_state["result"]
