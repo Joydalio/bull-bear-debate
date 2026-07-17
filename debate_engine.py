@@ -14,7 +14,8 @@ R1_TIMEOUT = 180  # R1은 장문 생성
 REBUTTAL_TIMEOUT = 90
 
 
-def debate(ticker, context, rounds=2, on_message=None):
+def debate(ticker, context, rounds=2, on_message=None, ask_fn=None):
+    ask_fn = ask_fn or claude_cli.ask  # 기본은 로컬 Claude CLI, Gemini 등 다른 백엔드 주입 가능
     transcript = []
     cost = 0.0
     bear_r1 = bull_r1 = last_bear = last_bull = ""
@@ -39,7 +40,7 @@ def debate(ticker, context, rounds=2, on_message=None):
                     user = (f"[{ticker}] 직전 상대(Bear) 주장:\n{last_bear}"
                             f"\n\n본인의 R1 논지 요약:\n{bull_r1[:500]}")
 
-            resp = claude_cli.ask(system, user, timeout=timeout)
+            resp = ask_fn(system, user, timeout=timeout)
             text = resp["result"]
             cost += resp.get("total_cost_usd") or 0.0
             transcript.append({"role": role, "round": r, "text": text})
@@ -56,7 +57,7 @@ def debate(ticker, context, rounds=2, on_message=None):
             if on_message:
                 on_message(role, r, text)
 
-    verdict, judge_cost = _judge(ticker, transcript)
+    verdict, judge_cost = _judge(ticker, transcript, ask_fn)
     return {
         "transcript": transcript,
         "verdict": verdict,
@@ -64,7 +65,7 @@ def debate(ticker, context, rounds=2, on_message=None):
     }
 
 
-def _judge(ticker, transcript):
+def _judge(ticker, transcript, ask_fn):
     full = "\n\n".join(
         f"[라운드 {m['round']} — {m['role'].upper()}]\n{m['text']}" for m in transcript
     )
@@ -72,7 +73,7 @@ def _judge(ticker, transcript):
     cost = 0.0
     raw = ""
     for _ in range(2):  # 파싱 실패 시 1회 재시도
-        resp = claude_cli.ask(JUDGE_SYSTEM, user, timeout=REBUTTAL_TIMEOUT)
+        resp = ask_fn(JUDGE_SYSTEM, user, timeout=REBUTTAL_TIMEOUT)
         cost += resp.get("total_cost_usd") or 0.0
         raw = resp["result"].strip()
         cleaned = raw.replace("```json", "").replace("```", "").strip()

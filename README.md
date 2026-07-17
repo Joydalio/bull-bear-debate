@@ -3,14 +3,22 @@
 공매도(Bear) 에이전트와 가치투자(Bull) 에이전트가 종목을 두고 토론하고,
 중립 심판이 **ORCA 점수**(O/R/C/A 각 0~2.5, 총 10점)로 판정하는 로컬 Streamlit 앱.
 
-- **API 키 불필요·추가 과금 없음** — 모든 LLM 호출은 로컬에 로그인된 Claude Code CLI(`claude -p`)를 통해 구독 세션으로 처리
+**두 가지 LLM 백엔드 지원** — 앱 화면에서 선택:
+
+| 백엔드 | 준비물 | 과금 |
+|---|---|---|
+| **Claude (로컬 CLI)** | Claude Code CLI 설치 + 로그인 | 구독 기반, 추가 과금 없음 |
+| **Gemini (API 키)** | [aistudio.google.com/apikey](https://aistudio.google.com/apikey)에서 키 발급 후 앱 화면에 입력 | API 사용량만큼 과금 (무료 티어 있음) |
+
+- **컨텍스트 자동 생성**: 종목명만 넣으면 웹검색(Claude WebSearch / Gemini Google 검색)으로 정량 스크리닝 요약을 AI가 자동 작성 — 직접 붙여넣기도 가능
+- Gemini API 키는 브라우저 세션에만 보관되며 디스크에 저장되지 않음
 - macOS / Windows 지원, Python 3.9+ (3.11+ 권장)
 
 ## 전제조건
 
-1. [Claude Code CLI](https://claude.com/claude-code) 설치 및 로그인 (`claude login` 또는 앱 최초 실행 시 로그인)
-2. 터미널에서 `claude --version`이 동작하는지 확인 (PATH 등록 필요)
-3. Python 3.9 이상 (3.11+ 권장)
+1. Python 3.9 이상 (3.11+ 권장)
+2. **Claude 백엔드 사용 시**: [Claude Code CLI](https://claude.com/claude-code) 설치 및 로그인, 터미널에서 `claude --version` 동작 확인 (PATH 등록 필요)
+3. **Gemini 백엔드 사용 시**: 별도 설치 불필요 — API 키만 발급받아 앱 화면에 입력
 
 ## 설치
 
@@ -33,14 +41,18 @@ streamlit run app.py
 
 브라우저에서 `http://localhost:8501` 접속 후:
 
-1. 사이드바에 **종목명 또는 상장사 종목코드**(예: `삼성전자` 또는 `005930`) 입력
-2. 메인 영역에 정량 스크리닝 요약(주가/PER/PSR/수급/오버행 등) 붙여넣기
-3. 라운드 수 선택(1~4, 기본 2) 후 **토론 시작**
-4. 판정 후 **JSON / PDF 다운로드** 버튼으로 결과 저장
+1. 사이드바에서 **LLM 백엔드 선택** (Claude 로컬 CLI 또는 Gemini API 키 입력)
+2. **종목명 또는 상장사 종목코드**(예: `삼성전자` 또는 `005930`) 입력
+3. **🔍 AI로 컨텍스트 자동 생성** 버튼 클릭 (또는 정량 스크리닝 요약을 직접 붙여넣기)
+4. 라운드 수 선택(1~4, 기본 2) 후 **토론 시작**
+5. 판정 후 **JSON / PDF 다운로드** 버튼으로 결과 저장
 
 ## 사용 모델
 
-항상 최상위 모델을 사용: `claude-fable-5` 우선, 사용 불가 시 `claude-opus-4-8`로 자동 폴백.
+항상 최상위 모델 우선, 사용 불가 시 자동 폴백:
+
+- Claude: `claude-fable-5` → `claude-opus-4-8`
+- Gemini: `gemini-3-pro-preview` → `gemini-2.5-pro`
 
 ## 알려진 제약
 

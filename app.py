@@ -5,29 +5,71 @@ import streamlit as st
 
 import claude_cli
 import debate_engine
+import gemini_client
 import pdf_export
 
 st.set_page_config(page_title="Bull vs Bear Debate", page_icon="⚖️", layout="wide")
 st.title("⚖️ Bull vs Bear Debate")
 
-preflight_error = claude_cli.preflight()
-if preflight_error:
-    st.error(preflight_error)
-
 with st.sidebar:
+    backend = st.radio("LLM 백엔드", ["Claude (로컬 CLI)", "Gemini (API 키)"])
+    use_gemini = backend.startswith("Gemini")
+
+    backend_error = None
+    gemini_key = ""
+    if use_gemini:
+        gemini_key = st.text_input(
+            "Gemini API 키",
+            type="password",
+            help="키는 브라우저 세션에만 보관되며 디스크에 저장되지 않습니다.",
+        )
+        st.caption("🔑 키 발급: [aistudio.google.com/apikey](https://aistudio.google.com/apikey)")
+        if not gemini_key:
+            backend_error = "Gemini API 키를 입력하세요."
+    else:
+        backend_error = claude_cli.preflight()
+
+    if backend_error:
+        st.warning(backend_error)
+
     ticker = st.text_input("종목명 또는 종목코드", placeholder="삼성전자 또는 005930")
     rounds = st.slider("라운드 수", 1, 4, 2)
     run = st.button(
         "토론 시작",
         type="primary",
-        disabled=bool(preflight_error),
+        disabled=bool(backend_error),
         use_container_width=True,
     )
+
+if use_gemini:
+    def ask_fn(system, user, timeout=90):
+        return gemini_client.ask(system, user, gemini_key, timeout=timeout)
+
+    def research_fn(t):
+        return gemini_client.research(t, gemini_key)
+else:
+    ask_fn = claude_cli.ask
+    research_fn = claude_cli.research
+
+auto_ctx = st.button(
+    "🔍 AI로 컨텍스트 자동 생성 (웹검색, 1~3분)",
+    disabled=bool(backend_error),
+)
+if auto_ctx:
+    if not ticker.strip():
+        st.warning("먼저 사이드바에 종목명(또는 종목코드)을 입력하세요.")
+    else:
+        try:
+            with st.spinner("웹에서 최신 정량 데이터를 조사하는 중…"):
+                st.session_state["context_text"] = research_fn(ticker.strip())
+        except Exception as e:
+            st.error(f"컨텍스트 자동 생성 실패: {e}")
 
 context = st.text_area(
     "컨텍스트",
     height=220,
-    placeholder="정량 스크리닝 요약 붙여넣기 — 주가/PER/PSR/수급/오버행 등",
+    key="context_text",
+    placeholder="정량 스크리닝 요약 붙여넣기 — 주가/PER/PSR/수급/오버행 등 (또는 위 버튼으로 자동 생성)",
 )
 
 
@@ -56,7 +98,8 @@ if run:
         try:
             with st.spinner("토론 진행 중… (라운드당 1~3분 소요)"):
                 result = debate_engine.debate(
-                    ticker.strip(), context.strip(), rounds=rounds, on_message=on_message
+                    ticker.strip(), context.strip(), rounds=rounds,
+                    on_message=on_message, ask_fn=ask_fn,
                 )
         except Exception as e:
             st.error(f"토론 중단: {e}")

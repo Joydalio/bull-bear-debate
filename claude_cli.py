@@ -68,6 +68,40 @@ def ask(system_prompt, user_prompt, timeout=90):
         return out
 
 
+def research(ticker, timeout=300):
+    """웹검색으로 종목 정량 스크리닝 요약을 자동 생성. 반환: 요약 문자열."""
+    from prompts import RESEARCH_PROMPT_TEMPLATE
+
+    global _active_model
+    prompt = RESEARCH_PROMPT_TEMPLATE.format(ticker=ticker)
+
+    def _run_research(model):
+        cmd = [
+            _claude_bin(), "-p", prompt,
+            "--output-format", "json",
+            "--model", model,
+            "--allowedTools", "WebSearch",
+        ]
+        proc = _run(cmd, timeout)
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"claude CLI 실패 (model={model}, code={proc.returncode}): {proc.stderr.strip()}"
+            )
+        data = json.loads(proc.stdout)
+        if data.get("is_error"):
+            raise RuntimeError(f"claude 응답 오류 (model={model}): {data.get('result')}")
+        return data.get("result", "")
+
+    try:
+        return _run_research(_active_model)
+    except RuntimeError:
+        if _active_model != MODEL_PRIMARY:
+            raise
+        out = _run_research(MODEL_FALLBACK)
+        _active_model = MODEL_FALLBACK
+        return out
+
+
 def preflight():
     try:
         proc = _run([_claude_bin(), "--version"], timeout=15)
