@@ -45,19 +45,21 @@ def _exec(model, args, timeout):
     return data
 
 
-def _with_fallback(fn):
+def _with_fallback(fn, model=None):
     global _active_model
+    primary = model or _active_model
     try:
-        return fn(_active_model)
+        return fn(primary)
     except RuntimeError:
-        if _active_model != MODEL_PRIMARY:
+        if primary == MODEL_FALLBACK:
             raise
         out = fn(MODEL_FALLBACK)
-        _active_model = MODEL_FALLBACK  # 성공한 폴백을 캐시해 이후 호출 재시도 방지
+        if model is None:
+            _active_model = MODEL_FALLBACK  # 암묵 경로만 캐시 (명시 선택은 오염 금지)
         return out
 
 
-def ask(system_prompt, user_prompt, timeout=90):
+def ask(system_prompt, user_prompt, timeout=90, model=None):
     def call(model):
         data = _exec(model, [user_prompt, "--system-prompt", system_prompt, "--max-turns", "1"], timeout)
         return {
@@ -67,16 +69,17 @@ def ask(system_prompt, user_prompt, timeout=90):
             "model": model,
         }
 
-    return _with_fallback(call)
+    return _with_fallback(call, model)
 
 
-def research(ticker, timeout=300):
+def research(ticker, timeout=300, model=None):
     """웹검색으로 종목 정량 스크리닝 요약을 자동 생성. 반환: 요약 문자열."""
     from prompts import RESEARCH_PROMPT_TEMPLATE
 
     prompt = RESEARCH_PROMPT_TEMPLATE.format(ticker=ticker)
     return _with_fallback(
-        lambda m: _exec(m, [prompt, "--allowedTools", "WebSearch"], timeout).get("result", "")
+        lambda m: _exec(m, [prompt, "--allowedTools", "WebSearch"], timeout).get("result", ""),
+        model,
     )
 
 

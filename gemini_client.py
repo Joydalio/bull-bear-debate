@@ -33,27 +33,29 @@ def _generate(api_key, model, system_prompt, user_prompt, timeout, tools=None):
     return text
 
 
-def _with_fallback(fn):
+def _with_fallback(fn, model=None):
     global _active_model
+    primary = model or _active_model
     try:
-        return fn(_active_model), _active_model
+        return fn(primary), primary
     except Exception:
-        if _active_model != MODEL_PRIMARY:
+        if primary == MODEL_FALLBACK:
             raise
         out = fn(MODEL_FALLBACK)
-        _active_model = MODEL_FALLBACK  # 성공한 폴백 캐시
+        if model is None:
+            _active_model = MODEL_FALLBACK  # 암묵 경로만 캐시 (명시 선택은 오염 금지)
         return out, MODEL_FALLBACK
 
 
-def ask(system_prompt, user_prompt, api_key, timeout=90):
-    text, model = _with_fallback(
-        lambda m: _generate(api_key, m, system_prompt, user_prompt, timeout)
+def ask(system_prompt, user_prompt, api_key, timeout=90, model=None):
+    text, used = _with_fallback(
+        lambda m: _generate(api_key, m, system_prompt, user_prompt, timeout), model
     )
     # Gemini API는 응답에 비용을 포함하지 않음 — 명목 비용 0으로 처리
-    return {"result": text, "total_cost_usd": 0.0, "is_error": False, "model": model}
+    return {"result": text, "total_cost_usd": 0.0, "is_error": False, "model": used}
 
 
-def research(ticker, api_key, timeout=180):
+def research(ticker, api_key, timeout=180, model=None):
     """Google 검색 그라운딩으로 종목 정량 스크리닝 요약을 자동 생성."""
     from google.genai import types
 
@@ -62,6 +64,6 @@ def research(ticker, api_key, timeout=180):
     prompt = RESEARCH_PROMPT_TEMPLATE.format(ticker=ticker)
     tools = [types.Tool(google_search=types.GoogleSearch())]
     text, _ = _with_fallback(
-        lambda m: _generate(api_key, m, None, prompt, timeout, tools=tools)
+        lambda m: _generate(api_key, m, None, prompt, timeout, tools=tools), model
     )
     return text
