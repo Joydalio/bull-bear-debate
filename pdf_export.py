@@ -28,11 +28,85 @@ def _find_font():
     )
 
 
-def build_pdf(ticker, transcript, verdict, notional_cost_usd):
+def _new_pdf():
     pdf = FPDF()
     pdf.add_font("kr", "", _find_font())
     pdf.set_auto_page_break(True, margin=15)
     pdf.add_page()
+    return pdf
+
+
+def build_text_pdf(title, text):
+    """요약 보고서 등 단일 텍스트 PDF."""
+    pdf = _new_pdf()
+    pdf.set_font("kr", size=18)
+    _mc(pdf, 0, 10, title)
+    pdf.set_font("kr", size=10)
+    _mc(pdf, 0, 6, f"생성일: {datetime.date.today().isoformat()}")
+    pdf.ln(4)
+    pdf.set_font("kr", size=10.5)
+    _mc(pdf, 0, 5.5, text)
+    return bytes(pdf.output())
+
+
+def build_tournament_pdf(data):
+    """토너먼트 최종 보고서: 랭킹 → 종목별 판정 요약 → 변론 전문."""
+    pdf = _new_pdf()
+    pdf.set_font("kr", size=18)
+    _mc(pdf, 0, 10, "종목 토너먼트 최종 보고서 — TOP" + str(len(data.get("results", {}))))
+    pdf.set_font("kr", size=10)
+    _mc(pdf, 0, 6, f"생성일: {datetime.date.today().isoformat()}   대상: {', '.join(data.get('tickers', []))}")
+    if data.get("failed"):
+        _mc(pdf, 0, 6, f"실패(제외): {', '.join(data['failed'])}")
+    pdf.ln(4)
+
+    ranking = data.get("ranking") or {}
+    pdf.set_font("kr", size=14)
+    _mc(pdf, 0, 8, "최종 순위")
+    pdf.set_font("kr", size=11)
+    if ranking.get("parse_error"):
+        _mc(pdf, 0, 6, "랭킹 파싱 실패 — 원문:")
+        _mc(pdf, 0, 6, str(ranking.get("raw", "")))
+    else:
+        for row in ranking.get("ranking", []):
+            t = row.get("ticker", "?")
+            total = (data["results"].get(t, {}).get("verdict") or {}).get("total", "?")
+            _mc(pdf, 0, 6, f"{row.get('rank')}. {t}  (ORCA {total}/10) — {row.get('reason', '')}")
+        if ranking.get("portfolio_comment"):
+            pdf.ln(2)
+            _mc(pdf, 0, 6, f"포트폴리오 코멘트: {ranking['portfolio_comment']}")
+    pdf.ln(4)
+
+    pdf.set_font("kr", size=14)
+    _mc(pdf, 0, 8, "종목별 판정 요약")
+    for t, res in data.get("results", {}).items():
+        v = res.get("verdict") or {}
+        pdf.set_font("kr", size=12)
+        _mc(pdf, 0, 7, f"■ {t}")
+        pdf.set_font("kr", size=10)
+        _mc(pdf, 0, 5.5, f"Verdict: {v.get('verdict')} / Winner: {v.get('winner')} / Total: {v.get('total')}")
+        _mc(pdf, 0, 5.5, f"핵심 근거: {v.get('key_reason', '')}")
+        for item in v.get("invalidation") or []:
+            _mc(pdf, 0, 5.5, f"  - 무효화: {item}")
+        pdf.ln(2)
+
+    if data.get("advocacy"):
+        pdf.set_font("kr", size=14)
+        _mc(pdf, 0, 8, "비교 변론 전문")
+        for t, speech in data["advocacy"].items():
+            pdf.set_font("kr", size=12)
+            _mc(pdf, 0, 7, f"[{t}]")
+            pdf.set_font("kr", size=10)
+            _mc(pdf, 0, 5.5, speech)
+            pdf.ln(2)
+
+    pdf.set_font("kr", size=9)
+    _mc(pdf, 0, 5, f"명목 비용: ${data.get('notional_cost_usd', 0):.4f} (구독 기반이므로 실제 청구 없음)")
+    return bytes(pdf.output())
+
+
+def build_pdf(ticker, transcript, verdict, notional_cost_usd):
+    pdf = _new_pdf()
 
     # 표지/헤더
     pdf.set_font("kr", size=18)

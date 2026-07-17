@@ -26,3 +26,25 @@ def test_build_pdf_parse_error_verdict():
     transcript, _ = _sample()
     data = pdf_export.build_pdf("T", transcript, {"parse_error": True, "raw": "심판 응답 원문"}, 0.1)
     assert data[:5] == b"%PDF-"
+
+
+def test_build_tournament_pdf():
+    transcript, verdict = _sample()
+    data = {
+        "type": "tournament", "tickers": ["A사", "B사"],
+        "contexts": {"A사": "ctx", "B사": "ctx"},
+        "results": {t: {"transcript": transcript, "verdict": verdict, "notional_cost_usd": 0.1}
+                    for t in ["A사", "B사"]},
+        "advocacy": {"A사": "A사가 우선임", "B사": "B사가 우선임"},
+        "ranking": {"ranking": [{"rank": 1, "ticker": "B사", "reason": "우세"},
+                                {"rank": 2, "ticker": "A사", "reason": "열세"}],
+                    "portfolio_comment": "균형 잡힌 구성"},
+        "failed": ["C사"], "notional_cost_usd": 0.5,
+    }
+    out = pdf_export.build_tournament_pdf(data)
+    assert out[:5] == b"%PDF-"
+
+
+def test_build_text_pdf():
+    out = pdf_export.build_text_pdf("요약 보고서", "결론: 매수 우선순위는 B사임.\n\n근거: 생략함.")
+    assert out[:5] == b"%PDF-"
