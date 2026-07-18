@@ -28,6 +28,7 @@ if not exist "%USERPROFILE%\.streamlit\credentials.toml" (
 )
 
 echo [3/3] 앱 실행 — 브라우저가 자동으로 열립니다
+echo       휴대폰에서 쓰려면: 같은 Wi-Fi에서 아래 "Network URL" 주소로 접속
 .venv\Scripts\python.exe -m streamlit run app.py
 
 pause

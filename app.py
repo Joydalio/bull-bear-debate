@@ -6,6 +6,7 @@ import re
 
 import streamlit as st
 
+import claude_api
 import claude_cli
 import debate_engine
 import gemini_client
@@ -48,12 +49,16 @@ h1 { font-size: 1.6rem !important; letter-spacing: -0.02em; }
 st.title("⚖️ Bull vs Bear Debate")
 
 with st.sidebar:
-    backend = st.radio("LLM 백엔드", ["Claude (로컬 CLI)", "Gemini (API 키)"])
+    backend = st.radio(
+        "LLM 백엔드", ["Claude (로컬 CLI)", "Claude (API 키)", "Gemini (API 키)"]
+    )
     use_gemini = backend.startswith("Gemini")
+    use_claude_api = backend == "Claude (API 키)"
     model_choice = st.selectbox("모델", GEMINI_MODELS if use_gemini else CLAUDE_MODELS)
 
     backend_error = None
     gemini_key = ""
+    claude_key = ""
     if use_gemini:
         gemini_key = st.text_input(
             "Gemini API 키",
@@ -63,6 +68,15 @@ with st.sidebar:
         st.caption("🔑 키 발급: [aistudio.google.com/apikey](https://aistudio.google.com/apikey)")
         if not gemini_key:
             backend_error = "Gemini API 키를 입력하세요."
+    elif use_claude_api:
+        claude_key = st.text_input(
+            "Claude API 키",
+            type="password",
+            help="키는 브라우저 세션에만 보관되며 디스크에 저장되지 않습니다. API는 사용량만큼 과금됩니다.",
+        )
+        st.caption("🔑 키 발급: [platform.claude.com](https://platform.claude.com/settings/keys)")
+        if not claude_key:
+            backend_error = "Claude API 키를 입력하세요."
     else:
         backend_error = claude_cli.preflight()
 
@@ -115,6 +129,12 @@ if use_gemini:
 
     def research_fn(t):
         return gemini_client.research(t, gemini_key, model=model_choice)
+elif use_claude_api:
+    def ask_fn(system, user, timeout=90):
+        return claude_api.ask(system, user, claude_key, timeout=timeout, model=model_choice)
+
+    def research_fn(t):
+        return claude_api.research(t, claude_key, model=model_choice)
 else:
     def ask_fn(system, user, timeout=90):
         return claude_cli.ask(system, user, timeout=timeout, model=model_choice)

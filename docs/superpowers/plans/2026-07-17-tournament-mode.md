@@ -754,7 +754,7 @@ git commit -m "feat: 토너먼트 UI — 다중 종목, 모델 선택, 타임아
 - **PDF 분량**: 전체 원문 또는 AI 요약 약 1~10장 선택
 ```
 
-- [ ] **Step 2: 실전 검수 — 2종목×1라운드 실호출** (mock 없이, 수 분 소요)
+- [x] **Step 2: 실전 검수 — 2종목×1라운드 실호출** (mock 없이, 수 분 소요)
 
 ```bash
 .venv/bin/python -c "
@@ -770,7 +770,7 @@ print('failed:', out['failed'], 'cost:', out['notional_cost_usd'])
 
 Expected: research→debate(bear/bull)×2종목→advocate×2→ranking 순 이벤트, ranking JSON에 두 종목 rank 1·2.
 
-- [ ] **Step 3: 스펙 검수 기준 체크리스트 보고 후 push**
+- [x] **Step 3: 스펙 검수 기준 체크리스트 보고 후 push**
 
 ```bash
 git push

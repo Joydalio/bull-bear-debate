@@ -8,6 +8,7 @@
 | 백엔드 | 준비물 | 과금 |
 |---|---|---|
 | **Claude (로컬 CLI)** | Claude Code CLI 설치 + 로그인 | 구독 기반, 추가 과금 없음 |
+| **Claude (API 키)** | [platform.claude.com](https://platform.claude.com/settings/keys)에서 키 발급 후 앱 화면에 입력 | API 사용량만큼 과금 |
 | **Gemini (API 키)** | [aistudio.google.com/apikey](https://aistudio.google.com/apikey)에서 키 발급 후 앱 화면에 입력 | API 사용량만큼 과금 (무료 티어 있음) |
 
 - **컨텍스트 자동 생성**: 종목명만 넣으면 웹검색(Claude WebSearch / Gemini Google 검색)으로 정량 스크리닝 요약을 AI가 자동 작성 — 직접 붙여넣기도 가능
@@ -64,6 +65,30 @@ streamlit run app.py
 - **PDF 분량**: 전체 원문 또는 AI 요약 약 1~10장 선택
 - **보고서 자동 저장**: 모든 결과가 `reports/`에 저장되며 사이드바에서 언제든 다시 열람
 
+## 휴대폰에서 쓰기
+
+앱을 PC에서 실행해 두면 **같은 Wi-Fi에 연결된 휴대폰**에서 바로 쓸 수 있다.
+
+1. `run.sh` / `run.bat` 실행 시 터미널에 표시되는 **Network URL**(예: `http://192.168.0.10:8501`)을 휴대폰 브라우저에 입력
+2. 좌상단 **≫** 버튼을 누르면 종목 입력·모델 선택 등 설정 패널이 열림
+3. 토론·토너먼트는 수 분~30분 걸리므로 실행 중에는 휴대폰 화면이 꺼지지 않게 유지 (연결이 끊겨도 결과는 `reports/`에 자동 저장되어 "지난 보고서"에서 열람 가능)
+
+집 밖에서도 쓰려면 PC와 휴대폰에 [Tailscale](https://tailscale.com)을 설치하고 Tailscale IP로 접속하면 된다 (포트 개방·설정 변경 불필요).
+
+### 폰만으로 쓰기 — 노트북 없이 (클라우드 배포)
+
+API 키 백엔드(Claude API 키 / Gemini API 키)는 로컬 CLI가 필요 없어서
+무료 호스팅에 올려두면 **휴대폰 브라우저만으로** 쓸 수 있다:
+
+1. 이 저장소를 본인 GitHub 계정으로 포크 (또는 그대로 사용)
+2. [share.streamlit.io](https://share.streamlit.io) 로그인 → **Create app** → 저장소·브랜치(`main`)·파일(`app.py`) 지정 → Deploy
+3. 발급된 `*.streamlit.app` 주소를 휴대폰 브라우저에서 열고 홈 화면에 추가
+4. 앱에서 백엔드를 **Claude (API 키)** 로 선택하고 [platform.claude.com](https://platform.claude.com/settings/keys)에서 발급한 키 입력
+
+주의: API 백엔드는 구독이 아니라 **사용량만큼 과금**된다 (5종목 토너먼트 1회 수 달러 수준,
+화면의 명목 비용이 실제 청구액). 키는 세션 메모리에만 있으므로 접속할 때마다 입력한다.
+Claude (로컬 CLI) 백엔드는 클라우드에서 동작하지 않는다 — 배포 앱에서는 API 키 백엔드만 사용.
+
 ## 사용 모델
 
 항상 최상위 모델 우선, 사용 불가 시 자동 폴백:
@@ -73,7 +98,7 @@ streamlit run app.py
 
 ## 알려진 제약
 
-- **로컬 전용** (localhost) — 서버 배포 불가. `claude` CLI 로그인 세션이 있는 머신에서만 동작
+- **로컬 서버 전용** — 클라우드 배포 불가. `claude` CLI 로그인 세션이 있는 PC에서 실행해야 하며, 휴대폰 등 다른 기기는 같은 네트워크에서 브라우저로 접속
 - 화면의 "명목 비용"은 CLI가 보고하는 참고 수치일 뿐, 구독 기반이므로 실제 청구 없음
 - 인코딩은 utf-8(errors=replace)로 처리해 Windows cp949 환경에서도 한글 깨짐 방지
 - PDF 한글 폰트: macOS(Arial Unicode) / Windows(맑은 고딕) 시스템 폰트 자동 사용
