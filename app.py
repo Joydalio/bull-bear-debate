@@ -10,6 +10,7 @@ import claude_api
 import claude_cli
 import debate_engine
 import gemini_client
+import openai_client
 import pdf_export
 from prompts import SUMMARY_SYSTEM_TEMPLATE
 
@@ -17,6 +18,7 @@ REPORTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports"
 
 CLAUDE_MODELS = ["claude-fable-5", "claude-opus-4-8", "claude-sonnet-5"]
 GEMINI_MODELS = ["gemini-3-pro-preview", "gemini-2.5-pro", "gemini-2.5-flash"]
+GPT_MODELS = ["gpt-5.1", "gpt-5", "gpt-5-mini"]
 
 st.set_page_config(page_title="Bull vs Bear Debate", page_icon="⚖️", layout="wide")
 
@@ -50,15 +52,21 @@ st.title("⚖️ Bull vs Bear Debate")
 
 with st.sidebar:
     backend = st.radio(
-        "LLM 백엔드", ["Claude (로컬 CLI)", "Claude (API 키)", "Gemini (API 키)"]
+        "LLM 백엔드",
+        ["Claude (로컬 CLI)", "Claude (API 키)", "GPT (API 키)", "Gemini (API 키)"],
     )
     use_gemini = backend.startswith("Gemini")
     use_claude_api = backend == "Claude (API 키)"
-    model_choice = st.selectbox("모델", GEMINI_MODELS if use_gemini else CLAUDE_MODELS)
+    use_gpt = backend.startswith("GPT")
+    model_choice = st.selectbox(
+        "모델",
+        GEMINI_MODELS if use_gemini else GPT_MODELS if use_gpt else CLAUDE_MODELS,
+    )
 
     backend_error = None
     gemini_key = ""
     claude_key = ""
+    openai_key = ""
     if use_gemini:
         gemini_key = st.text_input(
             "Gemini API 키",
@@ -77,6 +85,15 @@ with st.sidebar:
         st.caption("🔑 키 발급: [platform.claude.com](https://platform.claude.com/settings/keys)")
         if not claude_key:
             backend_error = "Claude API 키를 입력하세요."
+    elif use_gpt:
+        openai_key = st.text_input(
+            "OpenAI API 키",
+            type="password",
+            help="키는 브라우저 세션에만 보관되며 디스크에 저장되지 않습니다. API는 사용량만큼 과금됩니다.",
+        )
+        st.caption("🔑 키 발급: [platform.openai.com](https://platform.openai.com/api-keys)")
+        if not openai_key:
+            backend_error = "OpenAI API 키를 입력하세요."
     else:
         backend_error = claude_cli.preflight()
 
@@ -135,6 +152,12 @@ elif use_claude_api:
 
     def research_fn(t):
         return claude_api.research(t, claude_key, model=model_choice)
+elif use_gpt:
+    def ask_fn(system, user, timeout=90):
+        return openai_client.ask(system, user, openai_key, timeout=timeout, model=model_choice)
+
+    def research_fn(t):
+        return openai_client.research(t, openai_key, model=model_choice)
 else:
     def ask_fn(system, user, timeout=90):
         return claude_cli.ask(system, user, timeout=timeout, model=model_choice)
