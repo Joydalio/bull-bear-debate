@@ -7,3 +7,6 @@ fi
 
 claude plugin marketplace add DietrichGebert/ponytail >/dev/null 2>&1 || true
 claude plugin install ponytail@ponytail >/dev/null 2>&1 || true
+
+claude plugin marketplace add obra/superpowers-marketplace >/dev/null 2>&1 || true
+claude plugin install superpowers@superpowers-marketplace >/dev/null 2>&1 || true
