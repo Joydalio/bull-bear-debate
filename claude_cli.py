@@ -65,7 +65,6 @@ def ask(system_prompt, user_prompt, timeout=90, model=None):
         return {
             "result": data.get("result", ""),
             "total_cost_usd": data.get("total_cost_usd") or 0.0,
-            "is_error": False,
             "model": model,
         }
 

@@ -20,6 +20,16 @@ CLAUDE_MODELS = ["claude-fable-5", "claude-opus-4-8", "claude-sonnet-5"]
 GEMINI_MODELS = ["gemini-3-pro-preview", "gemini-2.5-pro", "gemini-2.5-flash"]
 GPT_MODELS = ["gpt-5.1", "gpt-5", "gpt-5-mini"]
 
+# API 키 백엔드: 모듈·키 입력 라벨·발급 링크 (로컬 CLI는 별도 분기)
+API_BACKENDS = {
+    "Claude (API 키)": (claude_api, "Claude API 키",
+                       "[platform.claude.com](https://platform.claude.com/settings/keys)"),
+    "GPT (API 키)": (openai_client, "OpenAI API 키",
+                    "[platform.openai.com](https://platform.openai.com/api-keys)"),
+    "Gemini (API 키)": (gemini_client, "Gemini API 키",
+                       "[aistudio.google.com/apikey](https://aistudio.google.com/apikey)"),
+}
+
 st.set_page_config(page_title="Bull vs Bear Debate", page_icon="⚖️", layout="wide")
 
 # Figma(Nickelfox Sales Dashboard) 팔레트: bg #171821 / card #21222D / mint #A9DFD8
@@ -55,45 +65,24 @@ with st.sidebar:
         "LLM 백엔드",
         ["Claude (로컬 CLI)", "Claude (API 키)", "GPT (API 키)", "Gemini (API 키)"],
     )
-    use_gemini = backend.startswith("Gemini")
-    use_claude_api = backend == "Claude (API 키)"
-    use_gpt = backend.startswith("GPT")
     model_choice = st.selectbox(
         "모델",
-        GEMINI_MODELS if use_gemini else GPT_MODELS if use_gpt else CLAUDE_MODELS,
+        GEMINI_MODELS if backend.startswith("Gemini")
+        else GPT_MODELS if backend.startswith("GPT") else CLAUDE_MODELS,
     )
 
     backend_error = None
-    gemini_key = ""
-    claude_key = ""
-    openai_key = ""
-    if use_gemini:
-        gemini_key = st.text_input(
-            "Gemini API 키",
-            type="password",
-            help="키는 브라우저 세션에만 보관되며 디스크에 저장되지 않습니다.",
-        )
-        st.caption("🔑 키 발급: [aistudio.google.com/apikey](https://aistudio.google.com/apikey)")
-        if not gemini_key:
-            backend_error = "Gemini API 키를 입력하세요."
-    elif use_claude_api:
-        claude_key = st.text_input(
-            "Claude API 키",
+    api_key = ""
+    if backend in API_BACKENDS:
+        _, key_label, key_link = API_BACKENDS[backend]
+        api_key = st.text_input(
+            key_label,
             type="password",
             help="키는 브라우저 세션에만 보관되며 디스크에 저장되지 않습니다. API는 사용량만큼 과금됩니다.",
         )
-        st.caption("🔑 키 발급: [platform.claude.com](https://platform.claude.com/settings/keys)")
-        if not claude_key:
-            backend_error = "Claude API 키를 입력하세요."
-    elif use_gpt:
-        openai_key = st.text_input(
-            "OpenAI API 키",
-            type="password",
-            help="키는 브라우저 세션에만 보관되며 디스크에 저장되지 않습니다. API는 사용량만큼 과금됩니다.",
-        )
-        st.caption("🔑 키 발급: [platform.openai.com](https://platform.openai.com/api-keys)")
-        if not openai_key:
-            backend_error = "OpenAI API 키를 입력하세요."
+        st.caption(f"🔑 키 발급: {key_link}")
+        if not api_key:
+            backend_error = f"{key_label}를 입력하세요."
     else:
         backend_error = claude_cli.preflight()
 
@@ -140,24 +129,14 @@ with st.sidebar:
             st.session_state["ticker"] = data.get("ticker", pick)
             st.session_state["loaded_report"] = pick
 
-if use_gemini:
+if backend in API_BACKENDS:
+    _backend_mod = API_BACKENDS[backend][0]
+
     def ask_fn(system, user, timeout=90):
-        return gemini_client.ask(system, user, gemini_key, timeout=timeout, model=model_choice)
+        return _backend_mod.ask(system, user, api_key, timeout=timeout, model=model_choice)
 
     def research_fn(t):
-        return gemini_client.research(t, gemini_key, model=model_choice)
-elif use_claude_api:
-    def ask_fn(system, user, timeout=90):
-        return claude_api.ask(system, user, claude_key, timeout=timeout, model=model_choice)
-
-    def research_fn(t):
-        return claude_api.research(t, claude_key, model=model_choice)
-elif use_gpt:
-    def ask_fn(system, user, timeout=90):
-        return openai_client.ask(system, user, openai_key, timeout=timeout, model=model_choice)
-
-    def research_fn(t):
-        return openai_client.research(t, openai_key, model=model_choice)
+        return _backend_mod.research(t, api_key, model=model_choice)
 else:
     def ask_fn(system, user, timeout=90):
         return claude_cli.ask(system, user, timeout=timeout, model=model_choice)

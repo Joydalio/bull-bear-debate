@@ -52,7 +52,7 @@ def ask(system_prompt, user_prompt, api_key, timeout=90, model=None):
         lambda m: _generate(api_key, m, system_prompt, user_prompt, timeout), model
     )
     # Gemini API는 응답에 비용을 포함하지 않음 — 명목 비용 0으로 처리
-    return {"result": text, "total_cost_usd": 0.0, "is_error": False, "model": used}
+    return {"result": text, "total_cost_usd": 0.0, "model": used}
 
 
 def research(ticker, api_key, timeout=180, model=None):
