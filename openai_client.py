@@ -47,7 +47,7 @@ def ask(system_prompt, user_prompt, api_key, timeout=90, model=None):
         lambda m: _generate(api_key, m, system_prompt, user_prompt, timeout),
         model or MODEL_FALLBACK,
     )
-    return {"result": text, "total_cost_usd": cost, "is_error": False, "model": used}
+    return {"result": text, "total_cost_usd": cost, "model": used}
 
 
 def research(ticker, api_key, timeout=300, model=None):
